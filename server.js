@@ -12,6 +12,7 @@ app.use(express.json());
 // Paths
 const usersFilePath = './users.json'; // Path for user data
 const JWT_SECRET = 'your_jwt_secret'; // Secure your secret
+const filePath = './todos.json';
 
 // Utility function to read users from the JSON file
 const getUsers = () => {
@@ -122,26 +123,51 @@ function authenticateToken(req, res, next) {
       next();
   });
 }
-
-app.post('/tasks', authenticateToken, (req, res) => {
-  const newTask = { id: tasks.length + 1, ...req.body };
+// Route to add a new task
+app.post('/tasks', (req, res) => {
+  const tasks = getTasks();
+  const newTask = req.body;
+  newTask.id = tasks.length; // Assign a unique ID
   tasks.push(newTask);
-  res.status(201).json(newTask);
+  saveTasks(tasks);
+  res.json(newTask);
 });
 
-app.put('/tasks/:id', authenticateToken, (req, res) => {
-  const taskId = parseInt(req.params.id);
+app.put('/tasks/:id', (req, res) => {
+  const tasks = getTasks(); // Fetch all tasks from JSON or database
+  const taskId = parseInt(req.params.id, 10); // Ensure task ID is an integer
+  const updatedTask = req.body; // Task data sent from frontend
+
+  console.log('Incoming update request for task ID:', taskId, updatedTask); // Log the incoming request
+
+  // Find task by id in the tasks array
   const taskIndex = tasks.findIndex(task => task.id === taskId);
-  if (taskIndex === -1) return res.sendStatus(404); // Not Found
 
-  tasks[taskIndex] = { ...tasks[taskIndex], ...req.body };
-  res.json(tasks[taskIndex]);
+  if (taskIndex !== -1) {
+    // Merge existing task with the updated data
+    tasks[taskIndex] = { ...tasks[taskIndex], ...updatedTask };
+    console.log('Updated task:', tasks[taskIndex]); // Log the updated task
+
+    saveTasks(tasks); // Save updated tasks back to JSON or database
+    res.json(tasks[taskIndex]); // Respond with the updated task
+  } else {
+    res.status(404).json({ message: 'Task not found' });
+  }
 });
 
-app.delete('/tasks/:id', authenticateToken, (req, res) => {
-  const taskId = parseInt(req.params.id);
-  tasks = tasks.filter(task => task.id !== taskId);
-  res.sendStatus(204); // No Content
+
+// Route to delete a task
+app.delete('/tasks/:id', (req, res) => {
+  const tasks = getTasks();
+  const taskId = parseInt(req.params.id, 10);
+
+  if (taskId >= 0 && taskId < tasks.length) {
+    const removedTask = tasks.splice(taskId, 1);
+    saveTasks(tasks);
+    res.json(removedTask);
+  } else {
+    res.status(404).json({ message: 'Task not found' });
+  }
 });
 
 // Start the server

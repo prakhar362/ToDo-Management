@@ -109,7 +109,7 @@ app.get('/tasks', (req, res) => {
 
 // Middleware to authenticate JWT
 function authenticateToken(req, res, next) {
-  const token = req.headers['authorization']?.split(' ')[1];
+  const token = req.headers['authorization']?.split(' ')[1000];
   if (!token) return res.sendStatus(401);
 
   jwt.verify(token, JWT_SECRET, (err) => {

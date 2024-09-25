@@ -4,15 +4,14 @@ const path = require('path');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
 
-
 const app = express();
 app.use(cors());
 app.use(express.json());
 
 // Paths
 const usersFilePath = './users.json'; // Path for user data
+const tasksFilePath = './todos.json'; // Path for tasks data
 const JWT_SECRET = 'your_jwt_secret'; // Secure your secret
-const filePath = './todos.json';
 
 // Utility function to read users from the JSON file
 const getUsers = () => {
@@ -27,6 +26,21 @@ const getUsers = () => {
 // Utility function to save users to the JSON file
 const saveUsers = (users) => {
   fs.writeFileSync(usersFilePath, JSON.stringify(users, null, 2));
+};
+
+// Utility function to read tasks from the JSON file
+const getTasks = () => {
+  try {
+    const data = fs.readFileSync(tasksFilePath);
+    return JSON.parse(data);
+  } catch (err) {
+    return []; // Return empty array if there is an error
+  }
+};
+
+// Utility function to save tasks to the JSON file
+const saveTasks = (tasks) => {
+  fs.writeFileSync(tasksFilePath, JSON.stringify(tasks, null, 2));
 };
 
 // Serve static files from the 'frontend' directory
@@ -65,43 +79,23 @@ app.post('/login', (req, res) => {
   }
 });
 
-
-// Helper function to read users from users.json
-const readUsersFromFile = () => {
-  try {
-      const data = fs.readFileSync('users.json'); // Synchronously read the file
-      return JSON.parse(data); // Parse and return users
-  } catch (error) {
-      console.error('Error reading users file:', error);
-      return {}; // Return empty object in case of error
-  }
-};
-
+// Signup route
 app.post('/signup', (req, res) => {
-    const { username, password } = req.body;
-  // Get users from JSON
+  const { username, password } = req.body;
   const users = getUsers();
 
-  // Find the user
-  const user = users.find(user => user.username === username);
-    // Check if user already exists
-    if (user) {
-        return res.status(400).send('User already exists'); // Return 400 Bad Request
-    }
+  // Check if user already exists
+  const userExists = users.some(user => user.username === username);
+  if (userExists) {
+    return res.status(400).send('User already exists');
+  }
 
-    const newUser = { username, password }; // Store both username and password
+  const newUser = { username, password };
+  users.push(newUser);
+  saveUsers(users);
 
-    // Add the new user to the existing users
-    users.push(newUser); // Store the new user as an object
-
-    // Save the updated users back to the users.json file using saveUsers
-    saveUsers(users);
-
-    res.status(201).send('User registered successfully'); // Send success response
+  res.status(201).send('User registered successfully');
 });
-
-
-
 
 // Serve the signup page
 app.get('/signup', (req, res) => {
@@ -118,51 +112,52 @@ function authenticateToken(req, res, next) {
   const token = req.headers['authorization']?.split(' ')[1];
   if (!token) return res.sendStatus(401);
 
-  jwt.verify(token, 'your_jwt_secret_key', (err) => {
-      if (err) return res.sendStatus(403);
-      next();
+  jwt.verify(token, JWT_SECRET, (err) => {
+    if (err) return res.sendStatus(403);
+    next();
   });
 }
+
+// Route to fetch all tasks
+app.get('/tasks', authenticateToken, (req, res) => {
+  const tasks = getTasks();
+  res.json(tasks); // Send all tasks as a response
+});
+
 // Route to add a new task
-app.post('/tasks', (req, res) => {
+app.post('/tasks', authenticateToken, (req, res) => {
   const tasks = getTasks();
   const newTask = req.body;
   newTask.id = tasks.length; // Assign a unique ID
   tasks.push(newTask);
   saveTasks(tasks);
-  res.json(newTask);
+  res.status(201).json(newTask); // Return the newly created task
 });
 
-app.put('/tasks/:id', (req, res) => {
-  const tasks = getTasks(); // Fetch all tasks from JSON or database
-  const taskId = parseInt(req.params.id, 10); // Ensure task ID is an integer
-  const updatedTask = req.body; // Task data sent from frontend
+// Route to update a task
+app.put('/tasks/:id', authenticateToken, (req, res) => {
+  const tasks = getTasks();
+  const taskId = parseInt(req.params.id, 10);
+  const updatedTask = req.body;
 
-  console.log('Incoming update request for task ID:', taskId, updatedTask); // Log the incoming request
-
-  // Find task by id in the tasks array
   const taskIndex = tasks.findIndex(task => task.id === taskId);
-
   if (taskIndex !== -1) {
-    // Merge existing task with the updated data
     tasks[taskIndex] = { ...tasks[taskIndex], ...updatedTask };
-    console.log('Updated task:', tasks[taskIndex]); // Log the updated task
-
-    saveTasks(tasks); // Save updated tasks back to JSON or database
+    saveTasks(tasks);
     res.json(tasks[taskIndex]); // Respond with the updated task
   } else {
     res.status(404).json({ message: 'Task not found' });
   }
 });
 
-
 // Route to delete a task
-app.delete('/tasks/:id', (req, res) => {
+app.delete('/tasks/:id', authenticateToken, (req, res) => {
   const tasks = getTasks();
   const taskId = parseInt(req.params.id, 10);
 
-  if (taskId >= 0 && taskId < tasks.length) {
-    const removedTask = tasks.splice(taskId, 1);
+  const taskIndex = tasks.findIndex(task => task.id === taskId);
+  if (taskIndex !== -1) {
+    const removedTask = tasks.splice(taskIndex, 1);
     saveTasks(tasks);
     res.json(removedTask);
   } else {
